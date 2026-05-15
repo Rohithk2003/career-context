@@ -4,9 +4,12 @@ import {
 	isProviderConfigured,
 	OllamaUnreachableError,
 } from "@/lib/llm";
-import { SYSTEM_PROMPT } from "@/lib/prompts";
-import { buildTunedResumeMarkdownPrompt } from "@/lib/tuned-resume-prompts";
+import {
+	buildTunedResumeMarkdownPrompt,
+	TUNED_RESUME_SYSTEM_PROMPT,
+} from "@/lib/tuned-resume-prompts";
 import { logRunAsync } from "@/lib/runs-log";
+import { sanitizeAsciiPunctuation } from "@/lib/utils";
 import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -115,14 +118,23 @@ export async function POST(req: NextRequest) {
 				for await (const chunk of streamLlmGenerate({
 					provider,
 					model,
-					system: SYSTEM_PROMPT,
+					system: TUNED_RESUME_SYSTEM_PROMPT,
 					prompt,
-					temperature: 0.35,
+					// Higher than profile synthesis: rewriting needs room to vary
+					// phrasing. Low temperatures make the model "play it safe" and
+					// echo the original input verbatim — exactly what we don't want.
+					// 0.65 pushes the model out of the "safest = repeat" attractor.
+					temperature: 0.65,
 					numCtx: 16_384,
 					signal,
 				})) {
-					finalOutput += chunk;
-					send({ type: "delta", text: chunk });
+					// Strip em-dashes / smart quotes / bullets / etc. so the résumé
+					// is ASCII-clean for ATS systems. Per-chunk is safe because our
+					// upstream adapter (streamLlmGenerate) yields fully-decoded UTF-8
+					// strings per LLM delta event, not raw byte fragments.
+					const clean = sanitizeAsciiPunctuation(chunk);
+					finalOutput += clean;
+					send({ type: "delta", text: clean });
 				}
 				send({ type: "stage", stage: "Tuning resume to JD", status: "done" });
 				send({ type: "done" });

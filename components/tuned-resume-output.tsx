@@ -14,15 +14,25 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/markdown";
-import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
+import type {
+	GitHubProfileAggregate,
+	LlmProvider,
+	ResumeFileKind,
+} from "@/lib/types";
 
 interface Props {
 	provider: LlmProvider | null;
 	model: string;
 	resumeText: string | null;
+	resumeKind: ResumeFileKind | null;
 	github: GitHubProfileAggregate | null;
 	jobDescription: string | null;
 	careerContext: string | null;
+	/** Increment to trigger a generation. The component fires whenever this
+	 *  value changes to a positive number (initial 0 is ignored). Used by the
+	 *  "Also auto-tune my résumé" checkbox in the parent. Decouples triggering
+	 *  from mount-time so React effect cleanup / re-runs can't kill it. */
+	triggerNonce?: number;
 }
 
 type SseEvent =
@@ -46,10 +56,15 @@ export function TunedResumeOutput({
 	provider,
 	model,
 	resumeText,
+	resumeKind,
 	github,
 	jobDescription,
 	careerContext,
+	triggerNonce = 0,
 }: Props) {
+	// When the source resume was a PDF, the user wants PDF-in-PDF-out: hide
+	// the Markdown / LaTeX download paths and keep PDF as the only artifact.
+	const pdfOnlyMode = resumeKind === "pdf";
 	const [output, setOutput] = React.useState("");
 	const [streaming, setStreaming] = React.useState(false);
 	const [streamError, setStreamError] = React.useState<string | null>(null);
@@ -64,6 +79,7 @@ export function TunedResumeOutput({
 	const [toolchainHint, setToolchainHint] = React.useState<string | null>(null);
 
 	const abortRef = React.useRef<AbortController | null>(null);
+	const lastFiredNonceRef = React.useRef(0);
 
 	const canGenerate =
 		!!provider && !!model && !!resumeText && !!jobDescription && !streaming;
@@ -145,6 +161,21 @@ export function TunedResumeOutput({
 	const handleStop = () => {
 		abortRef.current?.abort();
 	};
+
+	// Parent-driven trigger. Parent increments `triggerNonce` (e.g. when the
+	// profile generation completes and the "Also auto-tune my résumé" checkbox
+	// is on). We fire generate on each positive nonce we haven't seen yet.
+	// This is race-free: no setTimeout to be canceled by effect cleanup, no
+	// mount-timing dependency, and lastFiredNonceRef survives re-renders so
+	// we never double-fire for the same nonce.
+	React.useEffect(() => {
+		if (triggerNonce <= 0) return;
+		if (lastFiredNonceRef.current >= triggerNonce) return;
+		if (!canGenerate) return;
+		lastFiredNonceRef.current = triggerNonce;
+		void handleGenerate();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [triggerNonce, canGenerate]);
 
 	const handleCopy = async () => {
 		if (!output) return;
@@ -312,58 +343,62 @@ export function TunedResumeOutput({
 					)}
 					{hasOutput && !streaming && (
 						<>
+							{!pdfOnlyMode && (
+								<>
+									<Button
+										size="sm"
+										variant="ghost"
+										onClick={handleCopy}
+										className="h-8"
+									>
+										{copied ? (
+											<Check className="h-3.5 w-3.5 text-emerald-400" />
+										) : (
+											<Copy className="h-3.5 w-3.5" />
+										)}
+										{copied ? "Copied" : "Copy"}
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={handleDownloadMd}
+										className="h-8"
+									>
+										<Download className="h-3.5 w-3.5" />
+										.md
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={handleDownloadTex}
+										disabled={latexLoading}
+										className="h-8"
+									>
+										{latexLoading ? (
+											<Loader2 className="h-3.5 w-3.5 animate-spin" />
+										) : (
+											<Download className="h-3.5 w-3.5" />
+										)}
+										.tex
+									</Button>
+								</>
+							)}
 							<Button
 								size="sm"
-								variant="ghost"
-								onClick={handleCopy}
-								className="h-8"
-							>
-								{copied ? (
-									<Check className="h-3.5 w-3.5 text-emerald-400" />
-								) : (
-									<Copy className="h-3.5 w-3.5" />
-								)}
-								{copied ? "Copied" : "Copy"}
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={handleDownloadMd}
-								className="h-8"
-							>
-								<Download className="h-3.5 w-3.5" />
-								.md
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={handleDownloadTex}
-								disabled={latexLoading}
-								className="h-8"
-							>
-								{latexLoading ? (
-									<Loader2 className="h-3.5 w-3.5 animate-spin" />
-								) : (
-									<Download className="h-3.5 w-3.5" />
-								)}
-								.tex
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
+								variant={pdfOnlyMode ? "default" : "outline"}
 								onClick={handleDownloadPdf}
 								disabled={pdfLoading || latexLoading}
 								className="h-8"
 							>
-								{pdfLoading ? (
+								{pdfLoading || latexLoading ? (
 									<>
 										<Loader2 className="h-3.5 w-3.5 animate-spin" />
-										Compiling…
+										{latexLoading ? "Rendering…" : "Compiling…"}
 									</>
 								) : (
 									<>
 										<FileDown className="h-3.5 w-3.5" />
-										.pdf
+										Download PDF
 									</>
 								)}
 							</Button>
