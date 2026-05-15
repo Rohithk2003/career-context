@@ -24,6 +24,7 @@ import { LatexOutput } from "@/components/latex-output";
 import { CoverLetterOutput } from "@/components/cover-letter-output";
 import { TunedResumeOutput } from "@/components/tuned-resume-output";
 import { ImproveContext } from "@/components/improve-context";
+import { ClaudeCodeSkills } from "@/components/claude-code-skills";
 import type {
   GitHubProfileAggregate,
   ParsedResume,
@@ -43,6 +44,7 @@ type SseEvent =
 
 export default function Page() {
   const [model, setModel] = React.useState<ModelSelectorValue | null>(null);
+  const [claudeCodeSkills, setClaudeCodeSkills] = React.useState<string[]>([]);
   const [resume, setResume] = React.useState<ParsedResume | null>(null);
   const [githubInput, setGithubInput] = React.useState("");
   const [githubData, setGithubData] = React.useState<GitHubProfileAggregate | null>(
@@ -155,6 +157,10 @@ export default function Page() {
           resumeText: resume?.text ?? null,
           github: githubData,
           jobDescription: jobDescription.trim() || null,
+          claudeCodeSkills:
+            model.provider === "claude-code" && claudeCodeSkills.length > 0
+              ? claudeCodeSkills
+              : undefined,
         }),
         signal: controller.signal,
       });
@@ -301,6 +307,14 @@ export default function Page() {
                 </span>
               </div>
               <ModelSelector value={model} onChange={setModel} />
+              {model?.provider === "claude-code" && (
+                <div className="mt-3 border-t border-border/40 pt-3">
+                  <ClaudeCodeSkills
+                    value={claudeCodeSkills}
+                    onChange={setClaudeCodeSkills}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="rounded-xl border border-border/80 bg-card/40 p-5 backdrop-blur-sm">

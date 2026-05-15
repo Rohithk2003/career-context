@@ -33,6 +33,10 @@ interface GenerateBody {
   resumeText?: string | null;
   github?: GitHubProfileAggregate | null;
   jobDescription?: string | null;
+  /** Names of Claude Code skills to invoke at the top of each LLM call's
+   *  prompt. Only meaningful when provider === "claude-code"; ignored
+   *  otherwise. */
+  claudeCodeSkills?: string[];
 }
 
 type StageEvent =
@@ -52,6 +56,9 @@ export async function POST(req: NextRequest) {
   const resumeText = body.resumeText?.trim() || null;
   const github = body.github ?? null;
   const jobDescription = body.jobDescription?.trim() || null;
+  const claudeCodeSkills = Array.isArray(body.claudeCodeSkills)
+    ? body.claudeCodeSkills.filter((s): s is string => typeof s === "string")
+    : undefined;
 
   if (!providerRaw || !VALID_PROVIDERS.has(providerRaw as LlmProvider)) {
     return new Response(
@@ -117,6 +124,7 @@ export async function POST(req: NextRequest) {
                 temperature: 0.2,
                 signal,
                 onUsage,
+                claudeCodeSkills,
               });
             } finally {
               send({ type: "stage", stage: "Reading resume", status: "done" });
@@ -140,6 +148,7 @@ export async function POST(req: NextRequest) {
                 temperature: 0.2,
                 signal,
                 onUsage,
+                claudeCodeSkills,
               });
             } finally {
               send({
@@ -185,6 +194,7 @@ export async function POST(req: NextRequest) {
           numCtx: 12_288,
           signal,
           onUsage,
+          claudeCodeSkills,
         })) {
           finalOutput += chunk;
           send({ type: "delta", text: chunk });

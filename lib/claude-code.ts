@@ -24,6 +24,96 @@ export async function isClaudeCodeAvailable(): Promise<boolean> {
   return (await locateClaudeBinary()) !== null;
 }
 
+let cachedSkills: string[] | null = null;
+
+/**
+ * List installed Claude Code skills (built-ins + plugin-supplied) by
+ * spawning `claude -p` just long enough to read the `system init` JSON line,
+ * which authoritatively enumerates the active skill set. Kills the process
+ * before any API call goes out, so this is effectively free of tokens.
+ *
+ * Returns [] if the binary isn't installed or the init line doesn't arrive
+ * within 15s. Cached for the Node process lifetime — restart the server to
+ * pick up newly-installed skills.
+ */
+export async function listClaudeCodeSkills(): Promise<string[]> {
+  if (cachedSkills) return cachedSkills;
+  const bin = await locateClaudeBinary();
+  if (!bin) {
+    cachedSkills = [];
+    return cachedSkills;
+  }
+
+  return new Promise<string[]>((resolve) => {
+    const proc = spawn(
+      bin,
+      [
+        "-p",
+        "--model",
+        "haiku",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+
+    let buffer = "";
+    let resolved = false;
+    const finish = (result: string[]) => {
+      if (resolved) return;
+      resolved = true;
+      cachedSkills = result;
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        /* ignore */
+      }
+      resolve(result);
+    };
+
+    proc.stdout.on("data", (d: Buffer) => {
+      buffer += d.toString("utf-8");
+      let nl;
+      while ((nl = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, nl);
+        buffer = buffer.slice(nl + 1);
+        try {
+          const obj = JSON.parse(line.trim() || "null") as Record<
+            string,
+            unknown
+          > | null;
+          if (
+            obj &&
+            obj.type === "system" &&
+            obj.subtype === "init" &&
+            Array.isArray(obj.skills)
+          ) {
+            const skills = (obj.skills as unknown[]).filter(
+              (s): s is string => typeof s === "string",
+            );
+            finish(skills);
+            return;
+          }
+        } catch {
+          /* not json — keep buffering */
+        }
+      }
+    });
+
+    proc.on("error", () => finish([]));
+    proc.on("close", () => finish([]));
+
+    // The CLI doesn't emit `init` until stdin is closed. Send a no-op
+    // single-space prompt and close — that's enough to trigger init.
+    proc.stdin.write(" ");
+    proc.stdin.end();
+
+    // Safety fallback if init never arrives.
+    setTimeout(() => finish([]), 15_000);
+  });
+}
+
 export class ClaudeCodeMissingError extends Error {
   constructor() {
     super(
@@ -49,6 +139,22 @@ interface ClaudeCodeOpts {
   signal?: AbortSignal;
   /** Called once when the CLI's final `result` event arrives. */
   onUsage?: (usage: ClaudeCodeUsage) => void;
+  /** Names of Claude Code skills to invoke (as `/skill-name` lines prepended
+   *  to the prompt). The CLI resolves each slash command itself. Order is
+   *  preserved. Invalid skill names are silently ignored by the CLI. */
+  skills?: string[];
+}
+
+/** Prepend `/skill-name` invocation lines to the prompt so the CLI fires
+ *  the matching skills before processing the user message. Each on its own
+ *  line. Returns the prompt unchanged when no skills are supplied. */
+function applySkillsToPrompt(prompt: string, skills: string[] | undefined): string {
+  if (!skills || skills.length === 0) return prompt;
+  // Filter to safe slash-command shapes: kebab/snake/dot/colon allowed, no spaces.
+  const safe = skills.filter((s) => /^[A-Za-z0-9_:./-]+$/.test(s));
+  if (safe.length === 0) return prompt;
+  const header = safe.map((s) => `/${s}`).join("\n");
+  return `${header}\n\n${prompt}`;
 }
 
 function buildArgs(opts: ClaudeCodeOpts): string[] {
@@ -165,7 +271,7 @@ export async function* streamClaudeCode(
   });
 
   // Pipe the prompt into stdin and close.
-  proc.stdin.write(opts.prompt);
+  proc.stdin.write(applySkillsToPrompt(opts.prompt, opts.skills));
   proc.stdin.end();
 
   // Buffer stdout into lines (JSONL) and emit deltas as they're parsed.

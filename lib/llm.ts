@@ -68,6 +68,9 @@ interface GenerateOpts {
    *  Claude Code emit when their final event arrives. Codex is best-effort
    *  and may never fire. */
   onUsage?: (usage: LlmUsage) => void;
+  /** Claude Code skill names to invoke as `/skill-name` lines at the top
+   *  of the prompt. Ignored by every provider except claude-code. */
+  claudeCodeSkills?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +231,7 @@ export async function llmGenerateOnce(opts: GenerateOpts): Promise<string> {
       prompt: opts.prompt,
       signal: opts.signal,
       onUsage: opts.onUsage,
+      skills: opts.claudeCodeSkills,
     });
   }
 
@@ -282,6 +286,7 @@ export async function* streamLlmGenerate(
       prompt: opts.prompt,
       signal: opts.signal,
       onUsage: opts.onUsage,
+      skills: opts.claudeCodeSkills,
     });
     return;
   }
