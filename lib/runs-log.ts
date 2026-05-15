@@ -24,6 +24,17 @@ export type RunKind =
 	| "tuned-resume-latex"
 	| "improve-context";
 
+export interface RunUsage {
+	inputTokens?: number;
+	outputTokens?: number;
+	cacheCreationInputTokens?: number;
+	cacheReadInputTokens?: number;
+	totalDurationMs?: number;
+	evalDurationMs?: number;
+	promptEvalDurationMs?: number;
+	costUsd?: number;
+}
+
 export interface RunRecord {
 	kind: RunKind;
 	provider: string;
@@ -32,6 +43,9 @@ export interface RunRecord {
 	inputs: Record<string, unknown>;
 	output?: string | null;
 	error?: string | null;
+	/** Token usage / cost when the provider exposed it. Each provider fills
+	 *  a different subset; absent fields mean the provider didn't report. */
+	usage?: RunUsage;
 }
 
 function runsDir(): string {
@@ -66,4 +80,45 @@ export async function logRun(record: RunRecord): Promise<void> {
  */
 export function logRunAsync(record: RunRecord): void {
 	void logRun(record);
+}
+
+/**
+ * Build a usage accumulator for routes that make one or more LLM calls.
+ * The returned `onUsage` is wired into each call's `onUsage` option; the
+ * returned `snapshot` produces a final RunUsage to attach to the log,
+ * dropping zero-valued fields so the JSONL stays compact.
+ */
+export function makeUsageAccumulator(): {
+	onUsage: (u: RunUsage) => void;
+	snapshot: () => RunUsage;
+} {
+	const acc = {
+		inputTokens: 0,
+		outputTokens: 0,
+		cacheCreationInputTokens: 0,
+		cacheReadInputTokens: 0,
+		costUsd: 0,
+	};
+	return {
+		onUsage(u: RunUsage) {
+			if (u.inputTokens) acc.inputTokens += u.inputTokens;
+			if (u.outputTokens) acc.outputTokens += u.outputTokens;
+			if (u.cacheCreationInputTokens)
+				acc.cacheCreationInputTokens += u.cacheCreationInputTokens;
+			if (u.cacheReadInputTokens)
+				acc.cacheReadInputTokens += u.cacheReadInputTokens;
+			if (u.costUsd) acc.costUsd += u.costUsd;
+		},
+		snapshot() {
+			const out: RunUsage = {};
+			if (acc.inputTokens) out.inputTokens = acc.inputTokens;
+			if (acc.outputTokens) out.outputTokens = acc.outputTokens;
+			if (acc.cacheCreationInputTokens)
+				out.cacheCreationInputTokens = acc.cacheCreationInputTokens;
+			if (acc.cacheReadInputTokens)
+				out.cacheReadInputTokens = acc.cacheReadInputTokens;
+			if (acc.costUsd) out.costUsd = acc.costUsd;
+			return out;
+		},
+	};
 }

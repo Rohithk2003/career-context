@@ -3,7 +3,7 @@ import { llmGenerateOnce, OllamaUnreachableError } from "@/lib/llm";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
 import { buildTunedResumeLatexPrompt } from "@/lib/tuned-resume-prompts";
 import { DEFAULT_TUNED_RESUME_TEMPLATE } from "@/lib/tuned-resume-template";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -54,6 +54,8 @@ export async function POST(req: NextRequest) {
 		tunedResumeMarkdownChars: tunedResumeMarkdown.length,
 	};
 
+	const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
+
 	try {
 		const prompt = buildTunedResumeLatexPrompt({
 			tunedResumeMarkdown,
@@ -68,6 +70,7 @@ export async function POST(req: NextRequest) {
 			temperature: 0.2,
 			numCtx: 16_384,
 			signal: req.signal,
+			onUsage,
 		});
 
 		const latex = stripFences(raw);
@@ -81,6 +84,7 @@ export async function POST(req: NextRequest) {
 				inputs,
 				output: null,
 				error: "Model did not return a valid LaTeX document",
+				usage: usageSnapshot(),
 			});
 			return NextResponse.json(
 				{
@@ -99,6 +103,7 @@ export async function POST(req: NextRequest) {
 			durationMs: Date.now() - startedAt,
 			inputs,
 			output: latex,
+			usage: usageSnapshot(),
 		});
 		return NextResponse.json({ latex });
 	} catch (err) {
@@ -116,6 +121,7 @@ export async function POST(req: NextRequest) {
 			inputs,
 			output: null,
 			error: msg,
+			usage: usageSnapshot(),
 		});
 		return NextResponse.json({ error: msg }, { status: 500 });
 	}

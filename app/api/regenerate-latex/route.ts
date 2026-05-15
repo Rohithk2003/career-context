@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { llmGenerateOnce, OllamaUnreachableError } from "@/lib/llm";
 import { buildLatexRegenPrompt } from "@/lib/latex-prompts";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
     jobDescriptionChars: jobDescription?.length ?? 0,
     careerContextChars: careerContext?.length ?? 0,
   };
+  const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
   try {
     const prompt = buildLatexRegenPrompt({
@@ -95,6 +96,7 @@ export async function POST(req: NextRequest) {
       temperature: 0.3,
       numCtx: 16_384,
       signal: req.signal,
+      onUsage,
     });
 
     const latex = stripFences(raw);
@@ -108,6 +110,7 @@ export async function POST(req: NextRequest) {
         inputs,
         output: null,
         error: "Model did not return a valid LaTeX document",
+        usage: usageSnapshot(),
       });
       return NextResponse.json(
         {
@@ -126,6 +129,7 @@ export async function POST(req: NextRequest) {
       durationMs: Date.now() - startedAt,
       inputs,
       output: latex,
+      usage: usageSnapshot(),
     });
     return NextResponse.json({ latex });
   } catch (err) {
@@ -143,6 +147,7 @@ export async function POST(req: NextRequest) {
       inputs,
       output: null,
       error: msg,
+      usage: usageSnapshot(),
     });
     return NextResponse.json({ error: msg }, { status: 500 });
   }

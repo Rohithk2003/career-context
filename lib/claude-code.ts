@@ -33,12 +33,22 @@ export class ClaudeCodeMissingError extends Error {
   }
 }
 
+export interface ClaudeCodeUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  costUsd?: number;
+}
+
 interface ClaudeCodeOpts {
   /** "sonnet" | "opus" | "haiku" or a full Anthropic model id the CLI accepts. */
   model: string;
   prompt: string;
   system?: string;
   signal?: AbortSignal;
+  /** Called once when the CLI's final `result` event arrives. */
+  onUsage?: (usage: ClaudeCodeUsage) => void;
 }
 
 function buildArgs(opts: ClaudeCodeOpts): string[] {
@@ -100,6 +110,35 @@ function extractDeltaFromLine(line: string): string | null {
   return null;
 }
 
+/** Extract token usage from the CLI's final `result` event. Returns null
+ *  for any other event type. The `result` event arrives once at the end of
+ *  a generation and is the authoritative usage record. */
+function extractUsageFromLine(line: string): ClaudeCodeUsage | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  let obj: unknown;
+  try {
+    obj = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const ev = obj as Record<string, unknown>;
+  if (ev.type !== "result") return null;
+  const usage = (ev.usage as Record<string, unknown>) || {};
+  const u: ClaudeCodeUsage = {};
+  if (typeof usage.input_tokens === "number")
+    u.inputTokens = usage.input_tokens;
+  if (typeof usage.output_tokens === "number")
+    u.outputTokens = usage.output_tokens;
+  if (typeof usage.cache_creation_input_tokens === "number")
+    u.cacheCreationInputTokens = usage.cache_creation_input_tokens;
+  if (typeof usage.cache_read_input_tokens === "number")
+    u.cacheReadInputTokens = usage.cache_read_input_tokens;
+  if (typeof ev.total_cost_usd === "number") u.costUsd = ev.total_cost_usd;
+  return u;
+}
+
 /**
  * Streams stdout from a `claude -p` subprocess as text deltas. Aborts via
  * `signal` send SIGTERM to the child.
@@ -131,6 +170,7 @@ export async function* streamClaudeCode(
 
   // Buffer stdout into lines (JSONL) and emit deltas as they're parsed.
   let buffer = "";
+  let usageFired = false;
 
   try {
     for await (const chunk of proc.stdout) {
@@ -141,12 +181,26 @@ export async function* streamClaudeCode(
         buffer = buffer.slice(nl + 1);
         const delta = extractDeltaFromLine(line);
         if (delta) yield delta;
+        if (!usageFired && opts.onUsage) {
+          const usage = extractUsageFromLine(line);
+          if (usage) {
+            usageFired = true;
+            opts.onUsage(usage);
+          }
+        }
       }
     }
     // Drain any final partial line.
     if (buffer.trim()) {
       const delta = extractDeltaFromLine(buffer);
       if (delta) yield delta;
+      if (!usageFired && opts.onUsage) {
+        const usage = extractUsageFromLine(buffer);
+        if (usage) {
+          usageFired = true;
+          opts.onUsage(usage);
+        }
+      }
     }
     const code: number | null = await new Promise((resolve) => {
       proc.on("close", resolve);

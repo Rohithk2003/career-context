@@ -8,7 +8,7 @@ import {
 	buildTunedResumeMarkdownPrompt,
 	TUNED_RESUME_SYSTEM_PROMPT,
 } from "@/lib/tuned-resume-prompts";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import { sanitizeAsciiPunctuation } from "@/lib/utils";
 import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
 
@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
 			const startedAt = Date.now();
 			let finalOutput = "";
 			let runError: string | null = null;
+			const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
 			try {
 				send({ type: "stage", stage: "Tuning resume to JD", status: "start" });
@@ -127,6 +128,7 @@ export async function POST(req: NextRequest) {
 					temperature: 0.65,
 					numCtx: 16_384,
 					signal,
+					onUsage,
 				})) {
 					// Strip em-dashes / smart quotes / bullets / etc. so the résumé
 					// is ASCII-clean for ATS systems. Per-chunk is safe because our
@@ -162,6 +164,7 @@ export async function POST(req: NextRequest) {
 					},
 					output: runError ? null : finalOutput,
 					error: runError,
+					usage: usageSnapshot(),
 				});
 				controller.close();
 			}

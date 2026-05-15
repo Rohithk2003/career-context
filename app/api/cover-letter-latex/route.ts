@@ -3,7 +3,7 @@ import { llmGenerateOnce, OllamaUnreachableError } from "@/lib/llm";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
 import { buildCoverLetterLatexPrompt } from "@/lib/cover-letter-prompts";
 import { DEFAULT_COVER_LETTER_TEMPLATE } from "@/lib/cover-letter-template";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
 	const inputs = {
 		coverLetterMarkdownChars: coverLetterMarkdown.length,
 	};
+	const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
 	try {
 		const prompt = buildCoverLetterLatexPrompt({
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
 			temperature: 0.2,
 			numCtx: 12_288,
 			signal: req.signal,
+			onUsage,
 		});
 
 		const latex = stripFences(raw);
@@ -81,6 +83,7 @@ export async function POST(req: NextRequest) {
 				inputs,
 				output: null,
 				error: "Model did not return a valid LaTeX document",
+				usage: usageSnapshot(),
 			});
 			return NextResponse.json(
 				{
@@ -99,6 +102,7 @@ export async function POST(req: NextRequest) {
 			durationMs: Date.now() - startedAt,
 			inputs,
 			output: latex,
+			usage: usageSnapshot(),
 		});
 		return NextResponse.json({ latex });
 	} catch (err) {
@@ -116,6 +120,7 @@ export async function POST(req: NextRequest) {
 			inputs,
 			output: null,
 			error: msg,
+			usage: usageSnapshot(),
 		});
 		return NextResponse.json({ error: msg }, { status: 500 });
 	}

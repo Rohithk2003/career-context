@@ -31,6 +31,14 @@ export async function listOllamaModels(): Promise<OllamaModel[]> {
   );
 }
 
+export interface OllamaUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  totalDurationMs?: number;
+  evalDurationMs?: number;
+  promptEvalDurationMs?: number;
+}
+
 interface GenerateOptions {
   model: string;
   prompt: string;
@@ -38,6 +46,12 @@ interface GenerateOptions {
   temperature?: number;
   numCtx?: number;
   signal?: AbortSignal;
+  onUsage?: (usage: OllamaUsage) => void;
+}
+
+function nsToMs(ns: number | undefined): number | undefined {
+  if (typeof ns !== "number" || !Number.isFinite(ns) || ns < 0) return undefined;
+  return Math.round(ns / 1_000_000);
 }
 
 /**
@@ -94,10 +108,26 @@ export async function* streamOllamaGenerate(
               response?: string;
               done?: boolean;
               error?: string;
+              prompt_eval_count?: number;
+              eval_count?: number;
+              total_duration?: number;
+              eval_duration?: number;
+              prompt_eval_duration?: number;
             };
             if (evt.error) throw new Error(evt.error);
             if (evt.response) yield evt.response;
-            if (evt.done) return;
+            if (evt.done) {
+              if (opts.onUsage) {
+                opts.onUsage({
+                  inputTokens: evt.prompt_eval_count,
+                  outputTokens: evt.eval_count,
+                  totalDurationMs: nsToMs(evt.total_duration),
+                  evalDurationMs: nsToMs(evt.eval_duration),
+                  promptEvalDurationMs: nsToMs(evt.prompt_eval_duration),
+                });
+              }
+              return;
+            }
           } catch (e) {
             if (e instanceof Error && e.message.includes("Unexpected")) {
               // partial line - put back and wait for more

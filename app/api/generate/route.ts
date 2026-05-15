@@ -11,7 +11,7 @@ import {
   buildResumeUnderstandingPrompt,
   buildSynthesisPrompt,
 } from "@/lib/prompts";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -98,6 +98,9 @@ export async function POST(req: NextRequest) {
       const startedAt = Date.now();
       let finalOutput = "";
       let runError: string | null = null;
+      // Accumulate token usage across the three LLM calls (resume digest,
+      // github digest, final synthesis) so the run log shows the total.
+      const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
       // STEPS 1 + 2 — Resume understanding and GitHub enrichment run in
       // parallel since they don't depend on each other. Stage events fire as
@@ -113,6 +116,7 @@ export async function POST(req: NextRequest) {
                 prompt: buildResumeUnderstandingPrompt(resumeText),
                 temperature: 0.2,
                 signal,
+                onUsage,
               });
             } finally {
               send({ type: "stage", stage: "Reading resume", status: "done" });
@@ -135,6 +139,7 @@ export async function POST(req: NextRequest) {
                 prompt: buildGithubEnrichmentPrompt(github),
                 temperature: 0.2,
                 signal,
+                onUsage,
               });
             } finally {
               send({
@@ -179,6 +184,7 @@ export async function POST(req: NextRequest) {
           temperature: 0.45,
           numCtx: 12_288,
           signal,
+          onUsage,
         })) {
           finalOutput += chunk;
           send({ type: "delta", text: chunk });
@@ -213,6 +219,7 @@ export async function POST(req: NextRequest) {
           },
           output: runError ? null : finalOutput,
           error: runError,
+          usage: usageSnapshot(),
         });
         controller.close();
       }

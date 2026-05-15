@@ -416,6 +416,51 @@ function RunRow({ run }: { run: PersistedRun }) {
 							</div>
 						</div>
 					)}
+					{run.usage && Object.keys(run.usage).length > 0 && (
+						<div>
+							<p className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+								Token usage
+							</p>
+							<div className="flex flex-wrap gap-2 text-[11px]">
+								{run.usage.inputTokens !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 font-mono">
+										<span className="text-muted-foreground">in</span>
+										{run.usage.inputTokens.toLocaleString()}
+									</span>
+								)}
+								{run.usage.outputTokens !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 font-mono">
+										<span className="text-muted-foreground">out</span>
+										{run.usage.outputTokens.toLocaleString()}
+									</span>
+								)}
+								{run.usage.cacheReadInputTokens !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 font-mono">
+										<span className="text-muted-foreground">cache-read</span>
+										{run.usage.cacheReadInputTokens.toLocaleString()}
+									</span>
+								)}
+								{run.usage.cacheCreationInputTokens !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 font-mono">
+										<span className="text-muted-foreground">cache-write</span>
+										{run.usage.cacheCreationInputTokens.toLocaleString()}
+									</span>
+								)}
+								{run.usage.costUsd !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-1 font-mono text-emerald-300/90">
+										<span className="text-emerald-200/70">$</span>
+										{run.usage.costUsd.toFixed(4)}
+									</span>
+								)}
+								{run.usage.evalDurationMs !== undefined && (
+									<span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-1 font-mono">
+										<span className="text-muted-foreground">eval</span>
+										{(run.usage.evalDurationMs / 1000).toFixed(1)}s
+									</span>
+								)}
+							</div>
+						</div>
+					)}
 					<div>
 						<div className="mb-1 flex items-center justify-between gap-2">
 							<p className="text-[10px] uppercase tracking-wider text-muted-foreground">

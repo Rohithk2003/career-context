@@ -5,7 +5,7 @@ import {
   OllamaUnreachableError,
 } from "@/lib/llm";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { LlmProvider } from "@/lib/types";
 import { truncate } from "@/lib/utils";
 
@@ -168,6 +168,7 @@ export async function POST(req: NextRequest) {
       const startedAt = Date.now();
       let finalOutput = "";
       let runError: string | null = null;
+      const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
       try {
         send({
@@ -189,6 +190,7 @@ export async function POST(req: NextRequest) {
           temperature: 0.4,
           numCtx: 12_288,
           signal,
+          onUsage,
         })) {
           finalOutput += chunk;
           send({ type: "delta", text: chunk });
@@ -221,6 +223,7 @@ export async function POST(req: NextRequest) {
           },
           output: runError ? null : finalOutput,
           error: runError,
+          usage: usageSnapshot(),
         });
         controller.close();
       }

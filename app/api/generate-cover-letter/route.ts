@@ -6,7 +6,7 @@ import {
 } from "@/lib/llm";
 import { SYSTEM_PROMPT } from "@/lib/prompts";
 import { buildCoverLetterMarkdownPrompt } from "@/lib/cover-letter-prompts";
-import { logRunAsync } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
 import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
 			const startedAt = Date.now();
 			let finalOutput = "";
 			let runError: string | null = null;
+			const { onUsage, snapshot: usageSnapshot } = makeUsageAccumulator();
 
 			try {
 				send({ type: "stage", stage: "Writing cover letter", status: "start" });
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
 					temperature: 0.5,
 					numCtx: 12_288,
 					signal,
+					onUsage,
 				})) {
 					finalOutput += chunk;
 					send({ type: "delta", text: chunk });
@@ -153,6 +155,7 @@ export async function POST(req: NextRequest) {
 					},
 					output: runError ? null : finalOutput,
 					error: runError,
+					usage: usageSnapshot(),
 				});
 				controller.close();
 			}
