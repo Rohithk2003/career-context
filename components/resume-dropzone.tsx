@@ -9,10 +9,12 @@ import {
 	CheckCircle2,
 	AlertCircle,
 	Clock,
+	ClipboardPaste,
 } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 import type { ParsedResume } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
 	onParsed: (resume: ParsedResume) => void;
@@ -93,6 +95,8 @@ export function ResumeDropzone({ onParsed, parsed, onClear }: Props) {
 	const [error, setError] = React.useState<string | null>(null);
 	const [savedAt, setSavedAt] = React.useState<number | null>(null);
 	const [fromCache, setFromCache] = React.useState(false);
+	const [mode, setMode] = React.useState<"upload" | "paste">("upload");
+	const [pasteText, setPasteText] = React.useState("");
 
 	// Restore the most recent cached resume on mount, unless the parent already
 	// holds one. Lets the user pick up where they left off without re-uploading.
@@ -147,8 +151,18 @@ export function ResumeDropzone({ onParsed, parsed, onClear }: Props) {
 		clearCache();
 		setSavedAt(null);
 		setFromCache(false);
+		setPasteText("");
 		onClear();
 	}, [onClear]);
+
+	const handlePaste = React.useCallback(async () => {
+		const text = pasteText.trim();
+		if (!text) return;
+		const file = new File([text], "pasted.tex", {
+			type: "application/x-tex",
+		});
+		await handleFile(file);
+	}, [pasteText, handleFile]);
 
 	const { getRootProps, getInputProps, isDragActive, isDragReject } =
 		useDropzone({
@@ -218,38 +232,115 @@ export function ResumeDropzone({ onParsed, parsed, onClear }: Props) {
 	}
 
 	return (
-		<div>
+		<div className="space-y-2">
 			<div
-				{...getRootProps()}
-				className={cn(
-					"group relative rounded-xl border border-dashed border-border bg-card/30 px-5 py-8 text-center transition-all cursor-pointer",
-					"hover:border-primary/50 hover:bg-card/60",
-					isDragActive && "border-primary bg-primary/5 glow-purple",
-					isDragReject && "border-destructive/60 bg-destructive/5",
-					uploading && "pointer-events-none opacity-70",
-				)}
+				className="inline-flex rounded-md border border-border/60 bg-muted/20 p-0.5 text-[11px]"
+				role="tablist"
+				aria-label="Resume input mode"
 			>
-				<input {...getInputProps()} />
-				<div className="flex flex-col items-center gap-2">
-					<div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20 transition-transform group-hover:scale-105">
-						{uploading ? (
-							<Loader2 className="h-5 w-5 animate-spin text-primary" />
-						) : (
-							<UploadCloud className="h-5 w-5 text-primary" />
-						)}
-					</div>
-					<p className="text-sm font-medium">
-						{uploading
-							? "Extracting text..."
-							: isDragActive
-								? "Drop to parse"
-								: "Drop resume or click to upload"}
-					</p>
-					<p className="text-xs text-muted-foreground">
-						PDF, DOCX, LaTeX, TXT, or Markdown · up to 8MB · processed locally
-					</p>
-				</div>
+				<button
+					type="button"
+					role="tab"
+					aria-selected={mode === "upload"}
+					onClick={() => setMode("upload")}
+					className={cn(
+						"inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors",
+						mode === "upload"
+							? "bg-background text-foreground shadow-sm"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					<UploadCloud className="h-3 w-3" />
+					Upload
+				</button>
+				<button
+					type="button"
+					role="tab"
+					aria-selected={mode === "paste"}
+					onClick={() => setMode("paste")}
+					className={cn(
+						"inline-flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors",
+						mode === "paste"
+							? "bg-background text-foreground shadow-sm"
+							: "text-muted-foreground hover:text-foreground",
+					)}
+				>
+					<ClipboardPaste className="h-3 w-3" />
+					Paste LaTeX
+				</button>
 			</div>
+
+			{mode === "upload" ? (
+				<div
+					{...getRootProps()}
+					className={cn(
+						"group relative rounded-xl border border-dashed border-border bg-card/30 px-5 py-8 text-center transition-all cursor-pointer",
+						"hover:border-primary/50 hover:bg-card/60",
+						isDragActive && "border-primary bg-primary/5 glow-purple",
+						isDragReject && "border-destructive/60 bg-destructive/5",
+						uploading && "pointer-events-none opacity-70",
+					)}
+				>
+					<input {...getInputProps()} />
+					<div className="flex flex-col items-center gap-2">
+						<div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20 transition-transform group-hover:scale-105">
+							{uploading ? (
+								<Loader2 className="h-5 w-5 animate-spin text-primary" />
+							) : (
+								<UploadCloud className="h-5 w-5 text-primary" />
+							)}
+						</div>
+						<p className="text-sm font-medium">
+							{uploading
+								? "Extracting text..."
+								: isDragActive
+									? "Drop to parse"
+									: "Drop resume or click to upload"}
+						</p>
+						<p className="text-xs text-muted-foreground">
+							PDF, DOCX, LaTeX, TXT, or Markdown · up to 8MB · processed
+							locally
+						</p>
+					</div>
+				</div>
+			) : (
+				<div className="space-y-2">
+					<Textarea
+						value={pasteText}
+						onChange={(e) => setPasteText(e.target.value)}
+						placeholder={"\\documentclass{article}\n\\begin{document}\nPaste your LaTeX résumé source here…\n\\end{document}"}
+						rows={10}
+						spellCheck={false}
+						className="min-h-[200px] font-mono text-[11.5px] leading-relaxed"
+						disabled={uploading}
+					/>
+					<div className="flex items-center justify-between gap-2">
+						<p className="text-[11px] text-muted-foreground">
+							{pasteText.length.toLocaleString()} chars · saved to disk as{" "}
+							<code className="font-mono">pasted.tex</code>
+						</p>
+						<Button
+							size="sm"
+							onClick={handlePaste}
+							disabled={uploading || !pasteText.trim()}
+							className="h-8"
+						>
+							{uploading ? (
+								<>
+									<Loader2 className="h-3.5 w-3.5 animate-spin" />
+									Parsing…
+								</>
+							) : (
+								<>
+									<ClipboardPaste className="h-3.5 w-3.5" />
+									Parse LaTeX
+								</>
+							)}
+						</Button>
+					</div>
+				</div>
+			)}
+
 			{error && (
 				<div className="mt-2 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive-foreground/90">
 					<AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
