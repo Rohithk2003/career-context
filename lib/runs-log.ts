@@ -21,7 +21,8 @@ export type RunKind =
 	| "cover-letter-latex"
 	| "resume-latex"
 	| "tuned-resume"
-	| "tuned-resume-latex";
+	| "tuned-resume-latex"
+	| "improve-context";
 
 export interface RunRecord {
 	kind: RunKind;
