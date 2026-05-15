@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     return new Response(
       JSON.stringify({
         error:
-          "Provide at least one of: resume, GitHub profile, or job description.",
+          "Add any one of: a resume, a GitHub profile, or a job description. All three are optional — you just need at least one.",
       }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
@@ -99,51 +99,68 @@ export async function POST(req: NextRequest) {
       let finalOutput = "";
       let runError: string | null = null;
 
+      // STEPS 1 + 2 — Resume understanding and GitHub enrichment run in
+      // parallel since they don't depend on each other. Stage events fire as
+      // each individual task starts/finishes so the user sees both chips.
+      const resumePromise: Promise<string | null> = resumeText
+        ? (async () => {
+            send({ type: "stage", stage: "Reading resume", status: "start" });
+            try {
+              return await llmGenerateOnce({
+                provider,
+                model,
+                system: SYSTEM_PROMPT,
+                prompt: buildResumeUnderstandingPrompt(resumeText),
+                temperature: 0.2,
+                signal,
+              });
+            } finally {
+              send({ type: "stage", stage: "Reading resume", status: "done" });
+            }
+          })()
+        : Promise.resolve(null);
+
+      const githubPromise: Promise<string | null> = github
+        ? (async () => {
+            send({
+              type: "stage",
+              stage: "Analyzing GitHub activity",
+              status: "start",
+            });
+            try {
+              return await llmGenerateOnce({
+                provider,
+                model,
+                system: SYSTEM_PROMPT,
+                prompt: buildGithubEnrichmentPrompt(github),
+                temperature: 0.2,
+                signal,
+              });
+            } finally {
+              send({
+                type: "stage",
+                stage: "Analyzing GitHub activity",
+                status: "done",
+              });
+            }
+          })()
+        : Promise.resolve(null);
+
       try {
-        // STEP 1 — Resume understanding (non-streamed, internal)
-        let resumeDigest: string | null = null;
-        if (resumeText) {
-          send({ type: "stage", stage: "Reading resume", status: "start" });
-          resumeDigest = await llmGenerateOnce({
-            provider,
-            model,
-            system: SYSTEM_PROMPT,
-            prompt: buildResumeUnderstandingPrompt(resumeText),
-            temperature: 0.2,
-            signal,
-          });
-          send({ type: "stage", stage: "Reading resume", status: "done" });
-        }
+        const [resumeDigest, githubDigest] = await Promise.all([
+          resumePromise,
+          githubPromise,
+        ]);
 
-        // STEP 2 — GitHub enrichment (non-streamed, internal)
-        let githubDigest: string | null = null;
-        if (github) {
-          send({
-            type: "stage",
-            stage: "Analyzing GitHub activity",
-            status: "start",
-          });
-          githubDigest = await llmGenerateOnce({
-            provider,
-            model,
-            system: SYSTEM_PROMPT,
-            prompt: buildGithubEnrichmentPrompt(github),
-            temperature: 0.2,
-            signal,
-          });
-          send({
-            type: "stage",
-            stage: "Analyzing GitHub activity",
-            status: "done",
-          });
-        }
-
-        // STEP 3 — Final synthesis (streamed to client)
+        // STEP 3 — Final synthesis (streamed to client). The start and done
+        // events MUST use the same label or the client can't match them and
+        // the chip stays spinning forever even after generation completes.
+        const synthesisStage = jobDescription
+          ? "Aligning to target role & synthesizing"
+          : "Synthesizing career context";
         send({
           type: "stage",
-          stage: jobDescription
-            ? "Aligning to target role & synthesizing"
-            : "Synthesizing career context",
+          stage: synthesisStage,
           status: "start",
         });
         const finalPrompt = buildSynthesisPrompt({
@@ -168,7 +185,7 @@ export async function POST(req: NextRequest) {
         }
         send({
           type: "stage",
-          stage: "Synthesizing career context",
+          stage: synthesisStage,
           status: "done",
         });
         send({ type: "done" });

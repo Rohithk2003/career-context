@@ -113,23 +113,28 @@ export function buildSynthesisPrompt(args: {
     ? `\n---GITHUB DIGEST---\n${githubDigest}\n---END---\n`
     : "";
 
-  // Sections that depend on JD are conditionally requested below
-  const jdSections = jobDescription
+  // JD-only section. Single concise match table — the previous version also
+  // asked for a "Resume Positioning Suggestions" section, but the tailored
+  // résumé feature now handles that explicitly, so this would just duplicate
+  // work and burn tokens.
+  const jdSection = jobDescription
     ? `
 ## Match Analysis Against Job Description
-- A 1-line **Overall Alignment Score** as \`XX/100\` followed by a brief rationale.
-- A two-column-style Markdown table with columns: \`JD Requirement\` | \`Evidence in candidate's background\` | \`Match\` (✅ strong / 🟡 partial / 🔴 missing).
-- 3–6 rows, prioritising the most important JD requirements.
+- 1-line **Overall Alignment Score** as \`XX/100\` followed by a brief rationale.
+- A compact Markdown table with columns: \`JD Requirement\` | \`Evidence in background\` | \`Match\` (✅ / 🟡 / 🔴). 3–6 rows, most important requirements first.
 
-## Resume Positioning Suggestions
-- 3–6 actionable rewrites / reframings tailored to this JD. Each as a bullet.
-- Where appropriate, propose specific bullet-point rewrites for the resume in the form \`Before → After\`.
+## Likely Interview Topics
+First, extract the company name from the JD (look for the most prominent organization mentioned). Then list interview topics this company is *commonly reported* to ask, drawn from your training knowledge. Cap the section at ~150 words.
+- A short subsection **Coding patterns** with 4–6 LeetCode-style problem patterns / topic areas (e.g. "Two-pointer / sliding window", "Graph BFS/DFS on grids", "Dynamic programming on intervals", "Trie + autocomplete"). Use bullet points, one phrase each — no problem links, no fabricated specific problem titles.
+- A short subsection **System design / behavioral** with 2–4 themes if the role is mid/senior, otherwise omit it (e.g. "Designing a rate limiter", "Handling cross-team conflict").
+- End the section with the line: \`*(Inferred from public interview reports in my training data — verify against current Glassdoor / interviewing.io / Levels.fyi before relying.)*\`
+- If you can't confidently identify the company from the JD, write \`*(Company name not clear from the JD — skip this section.)*\` and skip the bullets.
 `
     : "";
 
   const recruiterClosing = `
-## Recruiter-style Candidate Overview
-A single tight paragraph (4–6 sentences) written as if a recruiter is pitching this candidate internally. Cover: seniority, strongest domain, what kind of problems they solve well, ${jobDescription ? "fit for the target role, " : ""}and one honest caveat. No fluff.
+## Recruiter-style Overview
+A single tight paragraph (3–4 sentences) written as if a recruiter is pitching this candidate internally. Cover seniority, strongest domain, ${jobDescription ? "fit for the target role, " : ""}and one honest caveat. No fluff.
 `;
 
   return `STEP 3 — FINAL SYNTHESIS
@@ -139,13 +144,13 @@ Sources provided: ${sourceLine}.
 Produce the FINAL CAREER CONTEXT PROFILE in clean Markdown. Use **exactly** these top-level sections in this order, and nothing else:
 
 ## Professional Summary
-A 3–5 sentence narrative — calibrated to actual evidence. No clichés. Mark any inferred claims with \`(inferred: ...)\`.
+2–4 sentence narrative — calibrated to actual evidence. No clichés. Mark any inferred claims with \`(inferred: ...)\`.
 
 ## Technical Skills
 Grouped bullets. Group headings should be specific (e.g. "Languages", "Backend", "Frontend", "Data / ML", "Infra / DevOps", "Tooling") — only include groups the evidence supports. Mark skills sourced only from GitHub with \`(github)\`, only from resume with \`(resume)\`, and those in both with \`(both)\`.
 
 ## Experience Highlights
-3–6 bullets summarising the candidate's most distinctive professional accomplishments. Quote concrete metrics or scope from the resume when present. If the resume is light on metrics, say so neutrally rather than inventing.
+3–5 bullets summarising the candidate's most distinctive professional accomplishments. Quote concrete metrics or scope from the resume when present. If the resume is light on metrics, say so neutrally rather than inventing.
 
 ## Open Source & GitHub Insights
 ${
@@ -154,27 +159,24 @@ ${
     : "Write a single sentence: \"No GitHub data provided.\" Do not invent."
 }
 
-## Career Interests
-Bullets describing what this candidate appears drawn to. Each bullet may include a confidence tag in parens. Avoid generic statements.
+## Strengths & Gaps
+- **Strengths**: 3–4 evidence-grounded bullets. Cite evidence in parens (e.g. \`(see: TypeScript across 14 repos)\`).
+- **Gaps**: 2–3 calibrated, honest gaps. Frame as developmental. Cite the gap's nature.
 
-## Strengths
-4–6 specific strengths grounded in evidence. Each bullet should cite the evidence in parens (e.g. \`(see: TypeScript across 14 repos)\` or \`(see: led platform migration at Acme)\`).
+## How to Level Up
+3–4 specific, actionable improvements ${jobDescription ? "calibrated to the target role" : "calibrated to the candidate's likely next step"}. Each bullet must have three parts on the same line:
+- **What to improve** — the specific gap or weak spot (be concrete, e.g. "limited evidence of system-design at scale", not "improve as engineer").
+- **Why it matters** — a half-sentence on the impact (career relevance, role fit, or signal to recruiters).
+- **How to close it** — one concrete next step: a tool to learn, a project to ship, a course / book / paper to read, or a kind of experience to chase. No platitudes ("read more"); name the resource type if you can't name a specific one.
 
-## Weaknesses / Gaps
-3–5 calibrated, honest gaps. Frame as developmental, not damning. Cite the gap's nature (e.g. "limited evidence of team leadership beyond IC scope").
-
-## Suggested Roles
-4–6 role titles + a 1-line rationale each. Range across "obvious fit", "stretch", and "adjacent pivot". Tag each accordingly.
-${jdSections}
-## Recommended Learning Roadmap
-A 30 / 60 / 90 day plan as three short subsections, each with 2–4 high-leverage bullets. Be concrete (specific tools / projects / concepts), not platitudes.
-${recruiterClosing}
+Format each bullet as:  \`**{What}** — {Why}. **How:** {How}.\`
+${jdSection}${recruiterClosing}
 
 Constraints:
 - Do NOT add a "Sources" / "Disclaimer" / "Conclusion" / "Methodology" section.
 - Do NOT prefix the output with "Here is..." or any preamble. Start directly with \`## Professional Summary\`.
 - Use \`(inferred: ...)\` or \`(confidence: low|medium|high)\` tags for any non-factual claim.
-- Keep total output under ~1,400 words.
+- Keep total output under ~700 words. Tight, high-signal — recruiters scan, they don't read.
 
 ${resumeBlock}${githubBlock}${jdBlock}`;
 }
