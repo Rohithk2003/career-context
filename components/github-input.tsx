@@ -383,10 +383,14 @@ export function GithubInput({ value, onChange, data, onData }: Props) {
   return (
     <div className="space-y-3">
       {auth?.configured && (
-        <Button onClick={handleSignIn} className="w-full" variant="default">
+        <Button onClick={handleSignIn} className="w-full" variant="outline">
           <Github className="h-4 w-4" /> Sign in with GitHub
         </Button>
       )}
+      <p className="text-[11px] text-muted-foreground">
+        GitHub is fully optional. The profile, cover letter, and résumé tune
+        all work without it — it just adds extra evidence when present.
+      </p>
       {auth?.configured && (
         <div className="flex items-center gap-3">
           <Separator className="flex-1" />

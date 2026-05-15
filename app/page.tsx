@@ -23,6 +23,7 @@ import { ProfileCard } from "@/components/profile-card";
 import { LatexOutput } from "@/components/latex-output";
 import { CoverLetterOutput } from "@/components/cover-letter-output";
 import { TunedResumeOutput } from "@/components/tuned-resume-output";
+import { ImproveContext } from "@/components/improve-context";
 import type {
   GitHubProfileAggregate,
   ParsedResume,
@@ -48,6 +49,14 @@ export default function Page() {
     null,
   );
   const [jobDescription, setJobDescription] = React.useState("");
+  const [autoTuneResume, setAutoTuneResume] = React.useState(false);
+  // Nonce we bump when we want the TunedResumeOutput to start generating.
+  // Increment-only: each new value is a fresh "go" signal. Decoupled from
+  // mount timing so React effect cleanups can't kill the trigger.
+  const [tuneTriggerNonce, setTuneTriggerNonce] = React.useState(0);
+  // Track which generation cycle we've already kicked tune for so we don't
+  // re-trigger on every re-render after profile completion.
+  const lastTunedForFinishRef = React.useRef<number | null>(null);
   const [scrapingJob, setScrapingJob] = React.useState(false);
   const [scrapeError, setScrapeError] = React.useState<string | null>(null);
   const [scrapedFrom, setScrapedFrom] = React.useState<string | null>(null);
@@ -216,7 +225,32 @@ export default function Page() {
   const generationDone = !streaming && !!output && !!finishedAt;
   const showLatexPanel = !!resume?.latexSource && generationDone;
   const showCoverLetterPanel = generationDone && !!jobDescription.trim();
-  const showTunedResumePanel = !!resume && !!jobDescription.trim();
+  // Tuned-résumé output appears only when the user opted in via the checkbox
+  // AND the profile has finished generating. The checkbox itself fires the
+  // tune automatically — there's no manual "Auto-tune resume" button anymore.
+  const showTunedResumePanel =
+    autoTuneResume && generationDone && !!resume && !!jobDescription.trim();
+
+  // When profile generation finishes AND the user opted in, fire the tune
+  // exactly once per generation cycle by bumping the trigger nonce. Keyed on
+  // `finishedAt` so a fresh profile run produces a fresh trigger; keyed on
+  // the ref so toggling the checkbox after-the-fact doesn't also fire.
+  React.useEffect(() => {
+    if (!autoTuneResume) return;
+    if (!generationDone) return;
+    if (!resume) return;
+    if (!jobDescription.trim()) return;
+    if (finishedAt === null) return;
+    if (lastTunedForFinishRef.current === finishedAt) return;
+    lastTunedForFinishRef.current = finishedAt;
+    // Small delay so the user visibly sees the profile finalize before the
+    // tune kicks off — earlier ask: "once aligning completes then only work
+    // on auto tuning".
+    const t = setTimeout(() => {
+      setTuneTriggerNonce((n) => n + 1);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [autoTuneResume, generationDone, resume, jobDescription, finishedAt]);
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -369,6 +403,31 @@ export default function Page() {
 
             <Separator />
 
+            <label
+              className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs transition-colors ${
+                !!resume && !!jobDescription.trim()
+                  ? "cursor-pointer border-border/60 bg-card/30 hover:border-border hover:bg-card/50"
+                  : "cursor-not-allowed border-border/30 bg-card/10 opacity-60"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={autoTuneResume}
+                onChange={(e) => setAutoTuneResume(e.target.checked)}
+                disabled={!resume || !jobDescription.trim()}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed"
+              />
+              <span className="leading-snug">
+                <span className="font-medium text-foreground">
+                  Also auto-tune my résumé
+                </span>{" "}
+                <span className="text-muted-foreground">
+                  — fires automatically after the profile generates. Needs a
+                  résumé and a job description.
+                </span>
+              </span>
+            </label>
+
             <Button
               size="lg"
               onClick={handleGenerate}
@@ -403,6 +462,17 @@ export default function Page() {
               onStop={handleStop}
               startedAt={startedAt}
               finishedAt={finishedAt}
+              footer={
+                generationDone ? (
+                  <ImproveContext
+                    compact
+                    provider={model?.provider ?? null}
+                    model={model?.model ?? ""}
+                    currentContext={output}
+                    onRevised={(newContext) => setOutput(newContext)}
+                  />
+                ) : undefined
+              }
             />
 
             {showLatexPanel && resume?.latexSource && (
@@ -431,9 +501,11 @@ export default function Page() {
                 provider={model?.provider ?? null}
                 model={model?.model ?? ""}
                 resumeText={resume.text}
+                resumeKind={resume.kind}
                 github={githubData}
                 jobDescription={jobDescription.trim() || null}
                 careerContext={generationDone ? output : null}
+                triggerNonce={tuneTriggerNonce}
               />
             )}
           </div>

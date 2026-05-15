@@ -8,7 +8,6 @@ import {
   Square,
   Loader2,
   AlertCircle,
-  CircleDot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "./markdown";
@@ -27,6 +26,9 @@ interface Props {
   onStop: () => void;
   startedAt: number | null;
   finishedAt: number | null;
+  /** Optional node rendered inside the card, below the markdown — used for the
+   *  Chat-to-improve footer so it sits inline with the content it edits. */
+  footer?: React.ReactNode;
 }
 
 export function OutputPanel({
@@ -37,6 +39,7 @@ export function OutputPanel({
   onStop,
   startedAt,
   finishedAt,
+  footer,
 }: Props) {
   const [copied, setCopied] = React.useState(false);
 
@@ -67,8 +70,19 @@ export function OutputPanel({
 
   const isEmpty = !output && !streaming && !error;
 
+  // Only enforce a tall minimum height when the panel is empty/loading — gives
+  // the empty hero room to breathe. Once content arrives, let the card hug the
+  // rendered markdown so we don't leave a black void under short outputs.
+  const expandToFill = !output;
+
   return (
-    <div className="flex h-full min-h-[640px] flex-col rounded-xl border border-border/80 bg-card/40 backdrop-blur-sm">
+    <div
+      className={cn(
+        "flex flex-col rounded-xl border border-border/80 bg-card/40 backdrop-blur-sm",
+        expandToFill && "h-full min-h-[640px]",
+      )}
+    >
+
       <header className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 ring-1 ring-primary/20">
@@ -80,7 +94,7 @@ export function OutputPanel({
             </h2>
             <p className="text-[11px] text-muted-foreground">
               {streaming
-                ? "Generating in your local model..."
+                ? "Streaming from the model…"
                 : output
                   ? "Ready to copy or export"
                   : "Output will appear here as the model streams"}
@@ -155,7 +169,12 @@ export function OutputPanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 py-5 scrollbar-thin">
+      <div
+        className={cn(
+          "px-6 py-5 scrollbar-thin",
+          expandToFill && "flex-1 overflow-y-auto",
+        )}
+      >
         {isEmpty && (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/5 ring-1 ring-primary/10">
@@ -199,12 +218,30 @@ export function OutputPanel({
         )}
 
         {!output && streaming && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CircleDot className="h-3.5 w-3.5 animate-pulse text-primary" />
-            Warming up the model and processing your inputs…
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <div className="relative flex h-12 w-12 items-center justify-center">
+              <span
+                aria-hidden
+                className="absolute inset-0 animate-ping rounded-full bg-primary/20"
+              />
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 ring-1 ring-primary/20">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            </div>
+            <h3 className="mt-4 text-sm font-medium text-foreground">
+              Warming up the model
+            </h3>
+            <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+              Reading your inputs, then streaming the profile back here token
+              by token.
+            </p>
           </div>
         )}
       </div>
+
+      {footer && (
+        <div className="border-t border-border/60 px-5 py-4">{footer}</div>
+      )}
     </div>
   );
 }
