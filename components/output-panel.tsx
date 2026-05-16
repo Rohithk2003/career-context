@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Markdown } from "./markdown";
 import { cn } from "@/lib/utils";
+import type { RunUsage } from "@/lib/runs-log";
 
 export interface StageState {
   label: string;
@@ -26,6 +27,9 @@ interface Props {
   onStop: () => void;
   startedAt: number | null;
   finishedAt: number | null;
+  /** Token usage / cost for the run, emitted by the server right before `done`.
+   *  Optional — older runs and Codex CLI may never report it. */
+  usage?: RunUsage | null;
   /** Optional node rendered inside the card, below the markdown — used for the
    *  Chat-to-improve footer so it sits inline with the content it edits. */
   footer?: React.ReactNode;
@@ -39,6 +43,7 @@ export function OutputPanel({
   onStop,
   startedAt,
   finishedAt,
+  usage,
   footer,
 }: Props) {
   const [copied, setCopied] = React.useState(false);
@@ -164,6 +169,50 @@ export function OutputPanel({
           {elapsed !== null && (
             <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
               {elapsed.toFixed(1)}s
+            </span>
+          )}
+        </div>
+      )}
+
+      {usage && Object.keys(usage).length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border/40 px-5 py-2 text-[11px]">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            Tokens
+          </span>
+          {usage.inputTokens !== undefined && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-0.5 font-mono">
+              <span className="text-muted-foreground">in</span>
+              {usage.inputTokens.toLocaleString()}
+            </span>
+          )}
+          {usage.outputTokens !== undefined && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-0.5 font-mono">
+              <span className="text-muted-foreground">out</span>
+              {usage.outputTokens.toLocaleString()}
+            </span>
+          )}
+          {usage.cacheReadInputTokens !== undefined && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-0.5 font-mono">
+              <span className="text-muted-foreground">cache-read</span>
+              {usage.cacheReadInputTokens.toLocaleString()}
+            </span>
+          )}
+          {usage.cacheCreationInputTokens !== undefined && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-0.5 font-mono">
+              <span className="text-muted-foreground">cache-write</span>
+              {usage.cacheCreationInputTokens.toLocaleString()}
+            </span>
+          )}
+          {usage.evalDurationMs !== undefined && (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background/60 px-2 py-0.5 font-mono">
+              <span className="text-muted-foreground">eval</span>
+              {(usage.evalDurationMs / 1000).toFixed(1)}s
+            </span>
+          )}
+          {usage.costUsd !== undefined && (
+            <span className="ml-auto inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-2 py-0.5 font-mono text-emerald-300/90">
+              <span className="text-emerald-200/70">$</span>
+              {usage.costUsd.toFixed(4)}
             </span>
           )}
         </div>

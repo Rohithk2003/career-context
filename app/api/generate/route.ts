@@ -11,7 +11,7 @@ import {
   buildResumeUnderstandingPrompt,
   buildSynthesisPrompt,
 } from "@/lib/prompts";
-import { logRunAsync, makeUsageAccumulator } from "@/lib/runs-log";
+import { logRunAsync, makeUsageAccumulator, type RunUsage } from "@/lib/runs-log";
 import type { GitHubProfileAggregate, LlmProvider } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -42,6 +42,7 @@ interface GenerateBody {
 type StageEvent =
   | { type: "stage"; stage: string; status: "start" | "done" }
   | { type: "delta"; text: string }
+  | { type: "usage"; usage: RunUsage }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -204,6 +205,8 @@ export async function POST(req: NextRequest) {
           stage: synthesisStage,
           status: "done",
         });
+        const usage = usageSnapshot();
+        if (Object.keys(usage).length > 0) send({ type: "usage", usage });
         send({ type: "done" });
       } catch (err) {
         const msg =

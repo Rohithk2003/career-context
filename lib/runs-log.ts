@@ -98,6 +98,9 @@ export function makeUsageAccumulator(): {
 		cacheCreationInputTokens: 0,
 		cacheReadInputTokens: 0,
 		costUsd: 0,
+		totalDurationMs: 0,
+		evalDurationMs: 0,
+		promptEvalDurationMs: 0,
 	};
 	return {
 		onUsage(u: RunUsage) {
@@ -108,6 +111,10 @@ export function makeUsageAccumulator(): {
 			if (u.cacheReadInputTokens)
 				acc.cacheReadInputTokens += u.cacheReadInputTokens;
 			if (u.costUsd) acc.costUsd += u.costUsd;
+			if (u.totalDurationMs) acc.totalDurationMs += u.totalDurationMs;
+			if (u.evalDurationMs) acc.evalDurationMs += u.evalDurationMs;
+			if (u.promptEvalDurationMs)
+				acc.promptEvalDurationMs += u.promptEvalDurationMs;
 		},
 		snapshot() {
 			const out: RunUsage = {};
@@ -118,6 +125,10 @@ export function makeUsageAccumulator(): {
 			if (acc.cacheReadInputTokens)
 				out.cacheReadInputTokens = acc.cacheReadInputTokens;
 			if (acc.costUsd) out.costUsd = acc.costUsd;
+			if (acc.totalDurationMs) out.totalDurationMs = acc.totalDurationMs;
+			if (acc.evalDurationMs) out.evalDurationMs = acc.evalDurationMs;
+			if (acc.promptEvalDurationMs)
+				out.promptEvalDurationMs = acc.promptEvalDurationMs;
 			return out;
 		},
 	};

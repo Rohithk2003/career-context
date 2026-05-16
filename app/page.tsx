@@ -18,6 +18,7 @@ import { ResumeDropzone } from "@/components/resume-dropzone";
 import { GithubInput } from "@/components/github-input";
 import { ModelSelector, type ModelSelectorValue } from "@/components/model-selector";
 import { OutputPanel, type StageState } from "@/components/output-panel";
+import type { RunUsage } from "@/lib/runs-log";
 import { SiteHeader } from "@/components/site-header";
 import { ProfileCard } from "@/components/profile-card";
 import { LatexOutput } from "@/components/latex-output";
@@ -39,6 +40,7 @@ interface SessionUserClient {
 type SseEvent =
   | { type: "stage"; stage: string; status: "start" | "done" }
   | { type: "delta"; text: string }
+  | { type: "usage"; usage: RunUsage }
   | { type: "error"; message: string }
   | { type: "done" };
 
@@ -129,6 +131,7 @@ export default function Page() {
   const [error, setError] = React.useState<string | null>(null);
   const [startedAt, setStartedAt] = React.useState<number | null>(null);
   const [finishedAt, setFinishedAt] = React.useState<number | null>(null);
+  const [usage, setUsage] = React.useState<RunUsage | null>(null);
 
   const abortRef = React.useRef<AbortController | null>(null);
 
@@ -140,6 +143,7 @@ export default function Page() {
     setError(null);
     setOutput("");
     setStages([]);
+    setUsage(null);
     setStartedAt(Date.now());
     setFinishedAt(null);
     setStreaming(true);
@@ -204,6 +208,8 @@ export default function Page() {
                 p.label === event.stage ? { ...p, status: "done" } : p,
               );
             });
+          } else if (event.type === "usage") {
+            setUsage(event.usage);
           } else if (event.type === "error") {
             setError(event.message);
           } else if (event.type === "done") {
@@ -476,6 +482,7 @@ export default function Page() {
               onStop={handleStop}
               startedAt={startedAt}
               finishedAt={finishedAt}
+              usage={usage}
               footer={
                 generationDone ? (
                   <ImproveContext
